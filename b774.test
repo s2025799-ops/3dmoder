@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B774 3DCG Test</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #050508; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // 1. シーン・カメラ・レンダラーの準備
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0a0d14, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // 海面スレスレから機体を見上げるローアングル設定
+    camera.position.set(14, 2.2, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // 2. ライティング（不穏な赤い照り返し＋月明かり）
+    const ambientLight = new THREE.AmbientLight(0x334455, 1.2);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xaaccff, 1.5);
+    dirLight.position.set(10, 30, 20);
+    scene.add(dirLight);
+
+    const redLight = new THREE.PointLight(0xff2222, 2.5, 50);
+    redLight.position.set(-10, 5, -15);
+    scene.add(redLight);
+
+    // 3. B774（双発機）の簡易3Dモデル組み立て
+    const plane = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b4236, roughness: 0.4, metalness: 0.3 }); // 迷彩ダークグリーン
+    const engineMat = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.3, metalness: 0.7 });
+
+    // 胴体
+    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 16, 16), bodyMat);
+    fuselage.rotation.x = Math.PI / 2;
+    plane.add(fuselage);
+
+    // 機首（ノーズ）
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(1.1, 16, 16), bodyMat);
+    nose.scale.set(1, 1, 2.2);
+    nose.position.z = 8;
+    plane.add(nose);
+
+    // 主翼
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(18, 0.25, 3.2), bodyMat);
+    wing.position.set(0, -0.2, 1);
+    plane.add(wing);
+
+    // 垂直尾翼
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.8, 2.5), bodyMat);
+    tail.position.set(0, 2.2, -6.5);
+    plane.add(tail);
+
+    // 水平尾翼
+    const hTail = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.2, 1.6), bodyMat);
+    hTail.position.set(0, 0.4, -6.8);
+    plane.add(hTail);
+
+    // 双発エンジン（B777ベースの証）
+    const engineGeo = new THREE.CylinderGeometry(0.75, 0.7, 2.8, 16);
+    engineGeo.rotateX(Math.PI / 2);
+    const leftEngine = new THREE.Mesh(engineGeo, engineMat);
+    leftEngine.position.set(-4.2, -0.9, 1.8);
+    const rightEngine = new THREE.Mesh(engineGeo, engineMat);
+    rightEngine.position.set(4.2, -0.9, 1.8);
+    plane.add(leftEngine, rightEngine);
+
+    // 翼端の点滅灯（赤）
+    const strobe = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    strobe.position.set(9, -0.2, 1);
+    plane.add(strobe);
+
+    plane.position.y = 5.5;
+    scene.add(plane);
+
+    // 4. 海面（波打つワイヤーフレーム風ダークオーシャン）
+    const seaGeo = new THREE.PlaneGeometry(200, 200, 48, 48);
+    seaGeo.rotateX(-Math.PI / 2);
+    const seaMat = new THREE.MeshStandardMaterial({
+      color: 0x0b1522,
+      roughness: 0.2,
+      metalness: 0.8,
+      flatShading: true
+    });
+    const sea = new THREE.Mesh(seaGeo, seaMat);
+    scene.add(sea);
+
+    // 5. アニメーションループ
+    let time = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.04;
+
+      // 海面の波を動かす
+      const pos = seaGeo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        const wave = Math.sin(x * 0.2 + time * 2) * 0.6 + Math.cos(z * 0.2 + time * 3) * 0.6;
+        pos.setY(i, wave);
+      }
+      pos.needsUpdate = true;
+
+      // 機体の揺れ（低空飛行の気流）
+      plane.position.y = 5.5 + Math.sin(time * 1.5) * 0.35;
+      plane.rotation.z = Math.sin(time * 1.2) * 0.08;
+      plane.rotation.x = Math.cos(time * 1.5) * 0.03;
+
+      // 翼端灯の点滅
+      strobe.visible = Math.sin(time * 6) > 0;
+
+      // カメラの微細な手ブレ演出
+      camera.position.y = 2.2 + Math.sin(time * 8) * 0.05;
+      camera.lookAt(plane.position);
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // 画面リサイズ対応
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
